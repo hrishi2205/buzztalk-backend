@@ -16,13 +16,46 @@ const { authSocket } = require("./middleware/auth.middleware");
 const app = express();
 const server = http.createServer(app);
 
-// CORS Configuration for Netlify + DigitalOcean
+// Basic env validation early to fail fast in deploys
+const requiredEnv = ["MONGO_URI", "JWT_SECRET"];
+const missing = requiredEnv.filter(
+  (k) => !process.env[k] || process.env[k].length === 0
+);
+if (missing.length) {
+  console.error("Missing required environment variables:", missing.join(", "));
+}
+
+// CORS Configuration for local and production
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  process.env.CLIENT_URL_2,
+  "https://buzztalk.me",
+  "https://www.buzztalk.me",
+  "http://localhost:5173",
+  "http://localhost:5000",
+].filter(Boolean);
+
 const corsOptions = {
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
-  methods: ["GET", "POST"],
+  origin: function (origin, callback) {
+    // Allow REST tools or same-origin requests with no Origin header
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
 };
 
-const io = new Server(server, { cors: corsOptions });
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: corsOptions.methods,
+    allowedHeaders: corsOptions.allowedHeaders,
+    credentials: corsOptions.credentials,
+  },
+});
 
 // Middleware
 app.use(cors(corsOptions));
@@ -32,6 +65,11 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/chats", chatRoutes);
+
+// Health check endpoint
+app.get(["/", "/health", "/api/health"], (req, res) => {
+  res.json({ status: "ok", uptime: process.uptime() });
+});
 
 // Database Connection
 mongoose
@@ -140,5 +178,6 @@ io.on("connection", async (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
+// Default to 5000 to match frontend's default API URL
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server listening on port ${PORT}`));

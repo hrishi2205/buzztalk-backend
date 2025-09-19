@@ -13,14 +13,15 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "friendId is required" });
     }
 
+    const userId = req.user.id;
     const user = await User.findById(userId);
-    if (!user.friends.includes(friendId)) {
+    if (!user.friends.some((id) => id.toString() === friendId.toString())) {
       return res
         .status(400)
         .json({ message: "You are not friends with this user" });
     }
+    // find one-to-one chat between the two users
     let chat = await Chat.findOne({
-      isGroupChat: false,
       participants: { $all: [userId, friendId], $size: 2 },
     });
     if (chat) {
@@ -47,7 +48,10 @@ router.get("/:chatId/messages", async (req, res) => {
 
     // Verify user is a participant of the chat
     const chat = await Chat.findById(chatId);
-    if (!chat || !chat.participants.includes(userId)) {
+    if (
+      !chat ||
+      !chat.participants.some((id) => id.toString() === userId.toString())
+    ) {
       return res
         .status(403)
         .json({ message: "Unauthorized to view these messages." });
@@ -55,7 +59,7 @@ router.get("/:chatId/messages", async (req, res) => {
 
     const messages = await Message.find({ chatId })
       .populate("senderId", "username _id")
-      .sort({ timestamp: 1 });
+      .sort({ createdAt: 1 });
 
     res.status(200).json(messages);
   } catch (err) {

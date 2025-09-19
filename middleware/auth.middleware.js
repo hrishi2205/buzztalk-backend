@@ -4,15 +4,17 @@ const jwt = require("jsonwebtoken");
 
 const auth = (req, res, next) => {
   try {
-    // Check for token in Authorization header
-    const authHeader = req.headers("Authorization");
+    // Authorization header may be in any case; Express normalizes header names to lowercase
+    const authHeader = req.headers["authorization"] || req.get("authorization");
     if (!authHeader) {
       return res
         .status(401)
         .json({ message: "No token, authorization denied." });
     }
-    // Bearer token format
-    const token = authHeader.replace("Bearer ", "");
+    // Expected format: "Bearer <token>"
+    const parts = authHeader.split(" ");
+    const token =
+      parts.length === 2 && /^Bearer$/i.test(parts[0]) ? parts[1] : null;
     if (!token) {
       return res
         .status(401)
@@ -24,7 +26,7 @@ const auth = (req, res, next) => {
     req.user = { id: decoded.id };
     next();
   } catch (err) {
-    console.error("Authentication error:", error.message);
+    console.error("Authentication error:", err.message);
     res.status(401).json({ message: "Token is not valid." });
   }
 };

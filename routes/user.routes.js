@@ -37,7 +37,7 @@ router.post("/friend-request/send", async (req, res) => {
     }
 
     // Check if already friends
-    if (recipient.friends.includes(senderId)) {
+    if (recipient.friends.some((id) => id.equals(senderId))) {
       return res.status(400).json({ message: "You are already friends." });
     }
 
@@ -48,12 +48,10 @@ router.post("/friend-request/send", async (req, res) => {
 
     // Check if there is a pending request from the recipient
     if (sender.friendRequests.some((req) => req.from.equals(recipientId))) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "This user has already sent you a request. Check your friend requests.",
-        });
+      return res.status(400).json({
+        message:
+          "This user has already sent you a request. Check your friend requests.",
+      });
     }
 
     recipient.friendRequests.push({ from: senderId });
@@ -107,7 +105,10 @@ router.get("/friend-requests", async (req, res) => {
       "friendRequests.from",
       "username _id"
     );
-    res.status(200).json(user.friendRequests);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    res.status(200).json(user.friendRequests || []);
   } catch (error) {
     res.status(500).json({ message: "Server error fetching friend requests." });
   }

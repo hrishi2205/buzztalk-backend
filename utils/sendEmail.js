@@ -1,8 +1,14 @@
 const sgMail = require("@sendgrid/mail");
 const dotenv = require("dotenv");
 dotenv.config();
-// Set the API key for SendGrid from your environment variables
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// Set the API key for SendGrid from your environment variables if present
+const hasSendgrid =
+  !!process.env.SENDGRID_API_KEY && !!process.env.SENDER_EMAIL;
+if (hasSendgrid) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+} else {
+  console.warn("SendGrid not configured. Emails will not be sent.");
+}
 
 /**
  * Sends an email using SendGrid.
@@ -17,6 +23,13 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
  * @param {object} [options.dynamicTemplateData] - Data for dynamic templates.
  */
 const sendEmail = async (options) => {
+  if (!hasSendgrid) {
+    console.warn(
+      `sendEmail called without SendGrid configuration. Intended recipient: ${options.to}`
+    );
+    return;
+  }
+
   const msg = {
     to: options.to,
     from: {

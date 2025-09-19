@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const User = require("../models/user.model");
-const sendEmail = require("../utils/sendEmail"); // Corrected line
+const sendEmail = require("../utils/sendEmail"); // Email utility (SendGrid)
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -36,11 +36,17 @@ router.post("/register/initiate", async (req, res) => {
     }
     await user.save();
     //! send OTP
-    await sendEmail({
-      to: user.email,
-      templateId: "d-a0623de3bbe04af899d9fb8475a072b4",
-      dynamicTemplateData: { otp },
-    });
+    const hasSendgrid =
+      !!process.env.SENDGRID_API_KEY && !!process.env.SENDER_EMAIL;
+    if (hasSendgrid) {
+      await sendEmail({
+        to: user.email,
+        templateId: "d-a0623de3bbe04af899d9fb8475a072b4",
+        dynamicTemplateData: { otp },
+      });
+    } else {
+      console.warn("SENDGRID not configured. OTP for", user.email, "is:", otp);
+    }
     res.status(200).json({ message: "Verification code sent to email." });
   } catch (error) {
     console.error("Error in /register/initiate:", error);
@@ -100,8 +106,9 @@ router.post("/register/complete", async (req, res) => {
     const decoded = jwt.verify(verificationToken, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
 
-    if (!user || !user.verificationToken !== verificationToken) {
-      return res.status(400).json({ message: "Invalid or expired token." });
+    // Validate that the provided token matches the one on the user
+    if (!user || user.verificationToken !== verificationToken) {
+      return res.status(400).json({ message: "Invalid or expired session." });
     }
     if (!user.isVerified) {
       return res.status(401).json({
@@ -116,10 +123,8 @@ router.post("/register/complete", async (req, res) => {
     if (existingUsername) {
       return res.status(400).json({ message: "Username is already taken." });
     }
-    const hashedPassword = await bcrypt.hash(password, 12);
-
     user.username = username.toLowerCase();
-    user.password = hashedPassword;
+    user.password = password; // Will be hashed by pre-save hook
     user.publicKey = publicKey;
     user.verificationToken = undefined;
 
