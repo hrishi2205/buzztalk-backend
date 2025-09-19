@@ -188,4 +188,34 @@ router.post("/:chatId/read", async (req, res) => {
     res.status(500).json({ message: "Server error marking read." });
   }
 });
+
+// Delete a chat and all its messages (participants only)
+router.delete("/:chatId", async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { chatId } = req.params;
+    const chat = await Chat.findById(chatId);
+    if (!chat) return res.status(404).json({ message: "Chat not found." });
+    if (!chat.participants.some((p) => p.toString() === userId)) {
+      return res.status(403).json({ message: "Not a participant." });
+    }
+
+    // Remove messages and chat document
+    await Message.deleteMany({ chatId });
+    await Chat.deleteOne({ _id: chatId });
+
+    // Emit room-wide chatDeleted so clients can update UI
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        io.to(chatId.toString()).emit("chatDeleted", { chatId });
+      }
+    } catch (e) {}
+
+    res.status(200).json({ message: "Chat deleted.", chatId });
+  } catch (err) {
+    console.error("Error deleting chat:", err);
+    res.status(500).json({ message: "Server error deleting chat." });
+  }
+});
 module.exports = router;
