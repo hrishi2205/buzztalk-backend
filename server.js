@@ -90,6 +90,8 @@ const io = new Server(server, {
 });
 
 // Middleware
+// Make io available to routes
+app.set("io", io);
 app.use(cors(corsOptions));
 // Ensure all preflight requests succeed quickly (Express 5: avoid "*" route)
 app.use((req, res, next) => {
@@ -162,7 +164,16 @@ app.get(["/", "/health", "/api/health"], (req, res) => {
 // Database Connection
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB connected successfully."))
+  .then(async () => {
+    console.log("MongoDB connected successfully.");
+    try {
+      // Ensure indexes (including unique pairKey) are in place
+      await Chat.syncIndexes();
+      console.log("Chat indexes are synced.");
+    } catch (e) {
+      console.warn("Warning syncing Chat indexes:", e?.message || e);
+    }
+  })
   .catch((err) => console.error("MongoDB connection error:", err));
 
 // Real-Time Logic (Socket.IO)
@@ -293,7 +304,10 @@ io.on("connection", async (socket) => {
       disconnectedUser.friends.forEach((friend) => {
         const recipientSocketId = onlineUsers.get(friend._id.toString());
         if (recipientSocketId) {
-          io.to(recipientSocketId).emit("friendOffline", socket.userId);
+          io.to(recipientSocketId).emit("friendOffline", {
+            userId: socket.userId,
+            lastSeen: disconnectedUser.lastSeen,
+          });
         }
       });
     }

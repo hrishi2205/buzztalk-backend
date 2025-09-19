@@ -76,22 +76,29 @@ router.post("/friend-request/respond", async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    // Remove request from recipient's list
-    recipient.friendRequests = recipient.friendRequests.filter(
-      (req) => !req.from.equals(requesterId)
+    // Always remove this request entry if present (idempotent)
+    await User.updateOne(
+      { _id: recipientId },
+      { $pull: { friendRequests: { from: requesterId } } }
     );
 
     if (response === "accept") {
-      // Add each other to friends lists
-      recipient.friends.push(requesterId);
-      requester.friends.push(recipientId);
-      await requester.save();
+      // Add each other as friends without duplicates
+      await Promise.all([
+        User.updateOne(
+          { _id: recipientId },
+          { $addToSet: { friends: requesterId } }
+        ),
+        User.updateOne(
+          { _id: requesterId },
+          { $addToSet: { friends: recipientId } }
+        ),
+      ]);
     }
-
-    await recipient.save();
 
     res.status(200).json({ message: `Friend request ${response}ed.` });
   } catch (error) {
+    console.error("Error responding to friend request:", error);
     res
       .status(500)
       .json({ message: "Server error responding to friend request." });
@@ -119,7 +126,7 @@ router.get("/friends", async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate(
       "friends",
-      "username displayName avatarUrl _id status publicKey"
+      "username displayName avatarUrl _id status publicKey lastSeen"
     );
     res.status(200).json(user.friends);
   } catch (error) {

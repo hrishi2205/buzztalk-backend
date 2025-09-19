@@ -20,20 +20,46 @@ router.post("/", async (req, res) => {
         .status(400)
         .json({ message: "You are not friends with this user" });
     }
-    // find one-to-one chat between the two users
+    // Ensure deterministic unordered key
+    const key = [userId.toString(), friendId.toString()].sort().join(":");
+    // First try to find any existing 1:1 chat by participants (for legacy docs without pairKey)
     let chat = await Chat.findOne({
       participants: { $all: [userId, friendId], $size: 2 },
-    });
+    }).sort({ createdAt: 1 });
     if (chat) {
+      // Backfill pairKey if missing
+      if (!chat.pairKey) {
+        try {
+          await Chat.updateOne({ _id: chat._id }, { $set: { pairKey: key } });
+          chat.pairKey = key;
+        } catch (e) {
+          // If duplicate key error due to another doc already having this pairKey, prefer the existing one
+          if (e && e.code === 11000) {
+            const byKey = await Chat.findOne({ pairKey: key });
+            if (byKey) chat = byKey;
+          }
+        }
+      }
       return res.status(200).json(chat);
     }
-    //!create new chat
-    const newChat = new Chat({
-      participants: [userId, friendId],
-    });
 
-    const savedChat = await newChat.save();
-    res.status(201).json(savedChat);
+    // Upsert a chat document atomically to avoid duplicates on races/double clicks
+    try {
+      chat = await Chat.findOneAndUpdate(
+        { pairKey: key },
+        {
+          $setOnInsert: {
+            participants: [userId, friendId],
+            pairKey: key,
+          },
+        },
+        { new: true, upsert: true }
+      );
+    } catch (e) {
+      // In very rare race, fallback to fetch by key
+      chat = await Chat.findOne({ pairKey: key });
+    }
+    return res.status(200).json(chat);
   } catch (err) {
     console.error("Error creating chat:", err);
     res.status(500).json({ message: "Server error. Please try again later." });
@@ -72,9 +98,33 @@ router.get("/:chatId/messages", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const userId = req.user.id;
-    const chats = await Chat.find({ participants: userId })
+    const chatsRaw = await Chat.find({ participants: userId })
       .populate("participants", "username displayName avatarUrl _id")
       .populate("lastMessage");
+
+    // Deduplicate chats by pairKey or sorted participants (in case old docs exist)
+    const seen = new Set();
+    const chats = [];
+    for (const chat of chatsRaw) {
+      let k = chat.pairKey;
+      if (
+        !k &&
+        Array.isArray(chat.participants) &&
+        chat.participants.length === 2
+      ) {
+        const ids = chat.participants.map(
+          (p) => p._id?.toString?.() || p.toString()
+        );
+        k = ids.sort().join(":");
+      }
+      if (!k) {
+        // Fallback to doc id to avoid dropping
+        k = `id:${chat._id}`;
+      }
+      if (seen.has(k)) continue;
+      seen.add(k);
+      chats.push(chat);
+    }
 
     // Compute unread counts per chat (simple approach)
     const result = [];
@@ -118,6 +168,20 @@ router.post("/:chatId/read", async (req, res) => {
     if (idx >= 0) chat.lastReads[idx].at = now;
     else chat.lastReads.push({ user: userId, at: now });
     await chat.save();
+    // Emit read receipt to other participants via socket.io
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        const otherIds = chat.participants
+          .map((p) => p.toString())
+          .filter((id) => id !== userId);
+        io.to(chatId.toString()).emit("messagesRead", {
+          chatId,
+          userId,
+          at: now,
+        });
+      }
+    } catch (e) {}
     res.status(200).json({ message: "Marked as read.", at: now });
   } catch (err) {
     console.error("Error marking read:", err);
