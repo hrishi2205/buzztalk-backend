@@ -4,6 +4,9 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const { Server } = require("socket.io");
+const path = require("path");
+const fs = require("fs");
+const multer = require("multer");
 
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
@@ -11,10 +14,13 @@ const chatRoutes = require("./routes/chat.routes");
 const User = require("./models/user.model");
 const Chat = require("./models/chat.model");
 const Message = require("./models/message.model"); // Import the Message model
-const { authSocket } = require("./middleware/auth.middleware");
+const { auth, authSocket } = require("./middleware/auth.middleware");
 
 const app = express();
 const server = http.createServer(app);
+
+// Behind reverse proxies (Netlify, Nginx), trust X-Forwarded-* headers
+app.set("trust proxy", 1);
 
 // Basic env validation early to fail fast in deploys
 const requiredEnv = ["MONGO_URI", "JWT_SECRET"];
@@ -75,11 +81,60 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
+// Serve static uploads
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
+app.use("/uploads", express.static(uploadsDir));
+
+// Multer storage for avatar uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || ".png";
+    const name = `avatar_${Date.now()}_${Math.round(
+      Math.random() * 1e9
+    )}${ext}`;
+    cb(null, name);
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (allowed.includes(file.mimetype)) return cb(null, true);
+    return cb(new Error("Only image files are allowed."));
+  },
+});
 
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/chats", chatRoutes);
+
+// Avatar upload endpoint (authenticated)
+app.post(
+  "/api/upload/avatar",
+  auth,
+  upload.single("avatar"),
+  async (req, res) => {
+    try {
+      if (!req.file)
+        return res.status(400).json({ message: "No file uploaded." });
+      const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${
+        req.file.filename
+      }`;
+      // Optionally, update user's avatarUrl immediately
+      await User.findByIdAndUpdate(req.user.id, { avatarUrl: fileUrl });
+      res.status(200).json({ url: fileUrl });
+    } catch (e) {
+      console.error("Avatar upload error:", e);
+      res.status(500).json({ message: "Server error uploading avatar." });
+    }
+  }
+);
 
 // Health check endpoint
 app.get(["/", "/health", "/api/health"], (req, res) => {
