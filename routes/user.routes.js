@@ -5,6 +5,19 @@ const { auth } = require("../middleware/auth.middleware");
 // Middleware to protect all routes in this file
 router.use(auth);
 
+// Get current user's profile (minimal fields)
+router.get("/me", async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select(
+      "_id username email displayName avatarUrl status lastSeen publicKey"
+    );
+    if (!user) return res.status(404).json({ message: "User not found." });
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({ message: "Server error fetching profile." });
+  }
+});
+
 // Search for a user by username
 router.get("/search/:username", async (req, res) => {
   try {
