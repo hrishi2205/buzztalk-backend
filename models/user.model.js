@@ -19,6 +19,13 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: false },
     // Store user's public key as a string (e.g., JWK or PEM)
     publicKey: { type: String },
+    // End-to-end encryption: store the user's private key encrypted at rest
+    // Ciphertext and parameters are base64 strings (URL-safe not required here)
+    epkCiphertext: { type: String },
+    epkIv: { type: String },
+    epkSalt: { type: String },
+    epkIterations: { type: Number },
+    epkAlgo: { type: String, default: "pbkdf2-aesgcm-v1" },
     // Optional avatar URL; client may upload elsewhere and store the public URL here
     avatarUrl: { type: String, trim: true },
     status: { type: String, enum: ["online", "offline"], default: "offline" },

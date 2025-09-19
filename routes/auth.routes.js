@@ -106,6 +106,8 @@ router.post("/register/complete", async (req, res) => {
       publicKey,
       displayName,
       avatarUrl,
+      // Encrypted Private Key package (optional at registration)
+      encryptedPrivateKey,
     } = req.body;
 
     if (!verificationToken || !username || !password || !publicKey) {
@@ -185,6 +187,22 @@ router.post("/register/complete", async (req, res) => {
     user.username = username.toLowerCase();
     user.password = password; // Will be hashed by pre-save hook
     user.publicKey = normalizedPublicKey;
+    // If client provided encrypted private key bundle, store it
+    if (
+      encryptedPrivateKey &&
+      typeof encryptedPrivateKey === "object" &&
+      encryptedPrivateKey.ciphertext &&
+      encryptedPrivateKey.iv &&
+      encryptedPrivateKey.salt
+    ) {
+      user.epkCiphertext = String(encryptedPrivateKey.ciphertext);
+      user.epkIv = String(encryptedPrivateKey.iv);
+      user.epkSalt = String(encryptedPrivateKey.salt);
+      if (encryptedPrivateKey.iterations)
+        user.epkIterations = Number(encryptedPrivateKey.iterations);
+      if (encryptedPrivateKey.algo)
+        user.epkAlgo = String(encryptedPrivateKey.algo);
+    }
     if (typeof displayName === "string" && displayName.trim().length > 0) {
       user.displayName = displayName.trim();
     } else {
@@ -210,6 +228,16 @@ router.post("/register/complete", async (req, res) => {
       email: user.email,
       displayName: user.displayName || user.username,
       avatarUrl: user.avatarUrl || null,
+      // Provide EPK bundle metadata if stored
+      encryptedPrivateKey: user.epkCiphertext
+        ? {
+            ciphertext: user.epkCiphertext,
+            iv: user.epkIv,
+            salt: user.epkSalt,
+            iterations: user.epkIterations,
+            algo: user.epkAlgo,
+          }
+        : null,
     });
   } catch (error) {
     console.error("Error in /register/complete:", error);
@@ -253,6 +281,16 @@ router.post("/login", async (req, res) => {
       email: user.email,
       displayName: user.displayName || user.username,
       avatarUrl: user.avatarUrl || null,
+      // Return encrypted private key bundle if present so client can decrypt
+      encryptedPrivateKey: user.epkCiphertext
+        ? {
+            ciphertext: user.epkCiphertext,
+            iv: user.epkIv,
+            salt: user.epkSalt,
+            iterations: user.epkIterations,
+            algo: user.epkAlgo,
+          }
+        : null,
     });
   } catch (error) {
     console.error("Error in /login:", error);

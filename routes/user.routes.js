@@ -9,10 +9,30 @@ router.use(auth);
 router.get("/me", async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select(
-      "_id username email displayName avatarUrl status lastSeen publicKey"
+      "_id username email displayName avatarUrl status lastSeen publicKey epkCiphertext epkIv epkSalt epkIterations epkAlgo"
     );
     if (!user) return res.status(404).json({ message: "User not found." });
-    res.status(200).json(user);
+    const out = user.toObject();
+    // Return EPK bundle metadata only to the owner
+    res.status(200).json({
+      _id: out._id,
+      username: out.username,
+      email: out.email,
+      displayName: out.displayName,
+      avatarUrl: out.avatarUrl,
+      status: out.status,
+      lastSeen: out.lastSeen,
+      publicKey: out.publicKey,
+      encryptedPrivateKey: out.epkCiphertext
+        ? {
+            ciphertext: out.epkCiphertext,
+            iv: out.epkIv,
+            salt: out.epkSalt,
+            iterations: out.epkIterations,
+            algo: out.epkAlgo,
+          }
+        : null,
+    });
   } catch (error) {
     res.status(500).json({ message: "Server error fetching profile." });
   }
@@ -226,5 +246,48 @@ router.patch("/profile", async (req, res) => {
   } catch (error) {
     console.error("Error updating profile:", error);
     res.status(500).json({ message: "Server error updating profile." });
+  }
+});
+
+/**
+ * Set or update the encrypted private key bundle for the authenticated user.
+ * Body: { ciphertext, iv, salt, iterations?, algo? }
+ */
+router.post("/private-key", async (req, res) => {
+  try {
+    const { ciphertext, iv, salt, iterations, algo } = req.body || {};
+    if (!ciphertext || !iv || !salt) {
+      return res
+        .status(400)
+        .json({ message: "ciphertext, iv and salt are required." });
+    }
+    const update = {
+      epkCiphertext: String(ciphertext),
+      epkIv: String(iv),
+      epkSalt: String(salt),
+    };
+    if (iterations) update.epkIterations = Number(iterations);
+    if (algo) update.epkAlgo = String(algo);
+    const user = await User.findByIdAndUpdate(req.user.id, update, {
+      new: true,
+    }).select(
+      "_id username email epkCiphertext epkIv epkSalt epkIterations epkAlgo"
+    );
+    if (!user) return res.status(404).json({ message: "User not found." });
+    return res.status(200).json({
+      message: "Encrypted private key updated.",
+      encryptedPrivateKey: {
+        ciphertext: user.epkCiphertext,
+        iv: user.epkIv,
+        salt: user.epkSalt,
+        iterations: user.epkIterations,
+        algo: user.epkAlgo,
+      },
+    });
+  } catch (error) {
+    console.error("Error updating encrypted private key:", error);
+    res
+      .status(500)
+      .json({ message: "Server error updating encrypted private key." });
   }
 });
