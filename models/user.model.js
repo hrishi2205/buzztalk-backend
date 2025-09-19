@@ -35,8 +35,8 @@ const userSchema = new mongoose.Schema(
     status: { type: String, enum: ["online", "offline"], default: "offline" },
     lastSeen: { type: Date },
     friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-  // Blocked users (current user has blocked these user IDs)
-  blocked: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    // Blocked users (current user has blocked these user IDs)
+    blocked: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     // Incoming friend requests as subdocuments { from: ObjectId<User>, createdAt }
     friendRequests: [
       new mongoose.Schema(

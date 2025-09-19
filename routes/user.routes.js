@@ -378,7 +378,8 @@ router.post("/private-key", async (req, res) => {
 router.post("/delete-account", async (req, res) => {
   try {
     const { password } = req.body || {};
-    if (!password) return res.status(400).json({ message: "Password required." });
+    if (!password)
+      return res.status(400).json({ message: "Password required." });
     const me = await User.findById(req.user.id).select("password");
     if (!me) return res.status(404).json({ message: "User not found." });
     const ok = await bcrypt.compare(password, me.password || "");
@@ -386,9 +387,18 @@ router.post("/delete-account", async (req, res) => {
 
     // Remove from others' friends and friendRequests, blocked
     await Promise.all([
-      User.updateMany({ friends: req.user.id }, { $pull: { friends: req.user.id } }),
-      User.updateMany({ "friendRequests.from": req.user.id }, { $pull: { friendRequests: { from: req.user.id } } }),
-      User.updateMany({ blocked: req.user.id }, { $pull: { blocked: req.user.id } }),
+      User.updateMany(
+        { friends: req.user.id },
+        { $pull: { friends: req.user.id } }
+      ),
+      User.updateMany(
+        { "friendRequests.from": req.user.id },
+        { $pull: { friendRequests: { from: req.user.id } } }
+      ),
+      User.updateMany(
+        { blocked: req.user.id },
+        { $pull: { blocked: req.user.id } }
+      ),
     ]);
     // Delete chats where user is a participant and related messages
     const chats = await Chat.find({ participants: req.user.id }).select("_id");
