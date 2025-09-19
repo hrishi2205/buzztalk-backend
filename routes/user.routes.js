@@ -2,7 +2,31 @@ const router = require("express").Router();
 const User = require("../models/user.model");
 const { auth } = require("../middleware/auth.middleware");
 
-// Middleware to protect all routes in this file
+// Public avatar endpoint by user ID; streams the stored MongoDB avatar
+// Placed BEFORE auth middleware so browser <img> tags can load without JWT headers
+router.get("/:userId/avatar", async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId).select(
+      "avatar avatarContentType avatarUpdatedAt"
+    );
+    if (!user || !user.avatar) {
+      return res.status(404).send("No avatar");
+    }
+    res.set("Content-Type", user.avatarContentType || "image/png");
+    res.set(
+      "Cache-Control",
+      "public, max-age=86400, stale-while-revalidate=600"
+    );
+    if (user.avatarUpdatedAt) {
+      res.set("Last-Modified", user.avatarUpdatedAt.toUTCString());
+    }
+    return res.status(200).send(user.avatar);
+  } catch (e) {
+    return res.status(500).send("Error fetching avatar");
+  }
+});
+
+// Middleware to protect all subsequent routes in this file
 router.use(auth);
 
 // Get current user's profile (minimal fields)
@@ -250,24 +274,7 @@ router.patch("/profile", async (req, res) => {
 });
 
 // Public avatar endpoint by user ID; streams the stored MongoDB avatar
-router.get("/:userId/avatar", async (req, res) => {
-  try {
-    const user = await User.findById(req.params.userId).select(
-      "avatar avatarContentType avatarUpdatedAt"
-    );
-    if (!user || !user.avatar) {
-      return res.status(404).send("No avatar");
-    }
-    res.set("Content-Type", user.avatarContentType || "image/png");
-    res.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=600");
-    if (user.avatarUpdatedAt) {
-      res.set("Last-Modified", user.avatarUpdatedAt.toUTCString());
-    }
-    return res.status(200).send(user.avatar);
-  } catch (e) {
-    return res.status(500).send("Error fetching avatar");
-  }
-});
+// (moved above auth)
 
 /**
  * Set or update the encrypted private key bundle for the authenticated user.

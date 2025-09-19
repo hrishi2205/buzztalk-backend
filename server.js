@@ -152,23 +152,31 @@ app.use("/api/users", userRoutes);
 app.use("/api/chats", chatRoutes);
 
 // Avatar upload endpoint (authenticated)
-app.post("/api/upload/avatar", auth, uploadMem.single("avatar"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: "No file uploaded." });
-    const update = {
-      avatar: req.file.buffer,
-      avatarContentType: req.file.mimetype,
-      avatarUpdatedAt: new Date(),
-    };
-    const url = `${req.protocol}://${req.get("host")}/api/users/${req.user.id}/avatar?ts=${Date.now()}`;
-    update.avatarUrl = url; // keep avatarUrl to ease client consumption
-    await User.findByIdAndUpdate(req.user.id, update);
-    res.status(200).json({ url });
-  } catch (e) {
-    console.error("Avatar upload error:", e);
-    res.status(500).json({ message: "Server error uploading avatar." });
+app.post(
+  "/api/upload/avatar",
+  auth,
+  uploadMem.single("avatar"),
+  async (req, res) => {
+    try {
+      if (!req.file)
+        return res.status(400).json({ message: "No file uploaded." });
+      const update = {
+        avatar: req.file.buffer,
+        avatarContentType: req.file.mimetype,
+        avatarUpdatedAt: new Date(),
+      };
+      const url = `${req.protocol}://${req.get("host")}/api/users/${
+        req.user.id
+      }/avatar?ts=${Date.now()}`;
+      update.avatarUrl = url; // keep avatarUrl to ease client consumption
+      await User.findByIdAndUpdate(req.user.id, update);
+      res.status(200).json({ url });
+    } catch (e) {
+      console.error("Avatar upload error:", e);
+      res.status(500).json({ message: "Server error uploading avatar." });
+    }
   }
-});
+);
 
 // Chat file upload endpoint (authenticated) - returns { url, filename, mimetype, size }
 app.post(

@@ -28,10 +28,10 @@ const userSchema = new mongoose.Schema(
     epkAlgo: { type: String, default: "pbkdf2-aesgcm-v1" },
     // Optional avatar URL; client may upload elsewhere and store the public URL here
     avatarUrl: { type: String, trim: true },
-  // Profile avatar stored directly in MongoDB for persistence
-  avatar: { type: Buffer },
-  avatarContentType: { type: String },
-  avatarUpdatedAt: { type: Date },
+    // Profile avatar stored directly in MongoDB for persistence
+    avatar: { type: Buffer },
+    avatarContentType: { type: String },
+    avatarUpdatedAt: { type: Date },
     status: { type: String, enum: ["online", "offline"], default: "offline" },
     lastSeen: { type: Date },
     friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
