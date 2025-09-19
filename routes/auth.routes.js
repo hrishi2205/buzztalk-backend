@@ -41,9 +41,9 @@ router.post("/register/initiate", async (req, res) => {
     if (hasSendgrid) {
       await sendEmail({
         to: user.email,
+        subject: "Your BuzzTalk verification code",
         templateId: "d-a0623de3bbe04af899d9fb8475a072b4",
         dynamicTemplateData: { otp },
-        subject: "Your BuzzTalk verification code",
       });
     } else {
       console.warn("SENDGRID not configured. OTP for", user.email, "is:", otp);
