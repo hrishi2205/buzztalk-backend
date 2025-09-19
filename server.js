@@ -29,8 +29,11 @@ if (missing.length) {
 const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.CLIENT_URL_2,
+  process.env.CLIENT_URL_3,
+  process.env.CLIENT_URL_4,
   "https://buzztalk.me",
   "https://www.buzztalk.me",
+  "https://tangerine-daffodil-1d942b.netlify.app",
   "http://localhost:5173",
   "http://localhost:5000",
 ].filter(Boolean);
@@ -44,7 +47,12 @@ const corsOptions = {
     return callback(new Error(`CORS blocked for origin: ${origin}`));
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Accept",
+    "X-Requested-With",
+  ],
   credentials: true,
 };
 
@@ -59,6 +67,8 @@ const io = new Server(server, {
 
 // Middleware
 app.use(cors(corsOptions));
+// Ensure all preflight requests succeed quickly
+app.options("*", cors(corsOptions));
 app.use(express.json());
 
 // API Routes
