@@ -43,6 +43,7 @@ router.post("/register/initiate", async (req, res) => {
         to: user.email,
         templateId: "d-a0623de3bbe04af899d9fb8475a072b4",
         dynamicTemplateData: { otp },
+        subject: "Your BuzzTalk verification code",
       });
     } else {
       console.warn("SENDGRID not configured. OTP for", user.email, "is:", otp);
@@ -98,7 +99,14 @@ router.post("/register/verify", async (req, res) => {
 //! Complete profile
 router.post("/register/complete", async (req, res) => {
   try {
-    const { verificationToken, username, password, publicKey } = req.body;
+    const {
+      verificationToken,
+      username,
+      password,
+      publicKey,
+      displayName,
+      avatarUrl,
+    } = req.body;
 
     if (!verificationToken || !username || !password || !publicKey) {
       return res.status(400).json({ message: "All fields are required." });
@@ -177,6 +185,14 @@ router.post("/register/complete", async (req, res) => {
     user.username = username.toLowerCase();
     user.password = password; // Will be hashed by pre-save hook
     user.publicKey = normalizedPublicKey;
+    if (typeof displayName === "string" && displayName.trim().length > 0) {
+      user.displayName = displayName.trim();
+    } else {
+      user.displayName = user.displayName || user.username;
+    }
+    if (typeof avatarUrl === "string") {
+      user.avatarUrl = avatarUrl.trim();
+    }
     user.verificationToken = undefined;
 
     await user.save();

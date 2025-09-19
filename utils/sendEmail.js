@@ -42,9 +42,11 @@ const sendEmail = async (options) => {
     // Use SendGrid Dynamic Template
     msg.templateId = options.templateId;
     msg.dynamicTemplateData = options.dynamicTemplateData || {};
+    // Provide a fallback subject so some mail clients show a subject line
+    msg.subject = options.subject || "Your BuzzTalk verification code";
   } else {
     // Use plain email
-    msg.subject = options.subject;
+    msg.subject = options.subject || "Your BuzzTalk verification code";
     msg.text = options.text;
     msg.html = options.html;
   }
