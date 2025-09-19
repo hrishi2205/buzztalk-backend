@@ -123,9 +123,46 @@ router.post("/register/complete", async (req, res) => {
     if (existingUsername) {
       return res.status(400).json({ message: "Username is already taken." });
     }
+    // Normalize and validate publicKey (accept JWK object or PEM string)
+    let normalizedPublicKey = null;
+    if (publicKey && typeof publicKey === "object") {
+      // JWK object
+      if (!publicKey.kty) {
+        return res.status(400).json({ message: "Invalid public key: missing 'kty' in JWK." });
+      }
+      try {
+        normalizedPublicKey = JSON.stringify(publicKey);
+      } catch (e) {
+        return res.status(400).json({ message: "Invalid public key: could not serialize JWK." });
+      }
+    } else if (typeof publicKey === "string") {
+      const trimmed = publicKey.trim();
+      if (trimmed.startsWith("{")) {
+        // Looks like a JWK JSON string
+        try {
+          const jwk = JSON.parse(trimmed);
+          if (!jwk.kty) {
+            return res.status(400).json({ message: "Invalid public key: missing 'kty' in JWK." });
+          }
+          normalizedPublicKey = JSON.stringify(jwk);
+        } catch (e) {
+          return res.status(400).json({ message: "Invalid public key: malformed JWK JSON." });
+        }
+      } else {
+        // Treat as PEM or raw key material string; basic sanity check
+        if (!/BEGIN PUBLIC KEY|BEGIN RSA PUBLIC KEY|BEGIN EC PUBLIC KEY/.test(trimmed)) {
+          // Allow but warn; client-side crypto may fail if this isn't a real PEM
+          console.warn("Registration received non-PEM publicKey string; storing as-is.");
+        }
+        normalizedPublicKey = trimmed;
+      }
+    } else {
+      return res.status(400).json({ message: "Invalid public key format." });
+    }
+
     user.username = username.toLowerCase();
     user.password = password; // Will be hashed by pre-save hook
-    user.publicKey = publicKey;
+    user.publicKey = normalizedPublicKey;
     user.verificationToken = undefined;
 
     await user.save();

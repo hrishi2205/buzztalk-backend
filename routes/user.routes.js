@@ -128,3 +128,55 @@ router.get("/friends", async (req, res) => {
 });
 
 module.exports = router;
+/**
+ * Rotate/Update the authenticated user's public key.
+ * Accepts either a JWK object/string (must include 'kty') or a PEM string.
+ */
+router.post("/public-key", async (req, res) => {
+  try {
+    const { publicKey } = req.body;
+    if (!publicKey) {
+      return res.status(400).json({ message: "publicKey is required." });
+    }
+
+    let normalized = null;
+    if (typeof publicKey === "object") {
+      if (!publicKey.kty) {
+        return res.status(400).json({ message: "Invalid public key: missing 'kty' in JWK." });
+      }
+      normalized = JSON.stringify(publicKey);
+    } else if (typeof publicKey === "string") {
+      const trimmed = publicKey.trim();
+      if (trimmed.startsWith("{")) {
+        try {
+          const jwk = JSON.parse(trimmed);
+          if (!jwk.kty) {
+            return res.status(400).json({ message: "Invalid public key: missing 'kty' in JWK." });
+          }
+          normalized = JSON.stringify(jwk);
+        } catch (e) {
+          return res.status(400).json({ message: "Invalid public key: malformed JWK JSON." });
+        }
+      } else {
+        // PEM or other format
+        normalized = trimmed;
+      }
+    } else {
+      return res.status(400).json({ message: "Invalid public key format." });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { publicKey: normalized },
+      { new: true }
+    ).select("_id username email publicKey");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    return res.status(200).json({ message: "Public key updated.", user });
+  } catch (error) {
+    console.error("Error updating public key:", error);
+    res.status(500).json({ message: "Server error updating public key." });
+  }
+});
