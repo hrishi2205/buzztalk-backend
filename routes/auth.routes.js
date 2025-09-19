@@ -128,12 +128,16 @@ router.post("/register/complete", async (req, res) => {
     if (publicKey && typeof publicKey === "object") {
       // JWK object
       if (!publicKey.kty) {
-        return res.status(400).json({ message: "Invalid public key: missing 'kty' in JWK." });
+        return res
+          .status(400)
+          .json({ message: "Invalid public key: missing 'kty' in JWK." });
       }
       try {
         normalizedPublicKey = JSON.stringify(publicKey);
       } catch (e) {
-        return res.status(400).json({ message: "Invalid public key: could not serialize JWK." });
+        return res
+          .status(400)
+          .json({ message: "Invalid public key: could not serialize JWK." });
       }
     } else if (typeof publicKey === "string") {
       const trimmed = publicKey.trim();
@@ -142,17 +146,27 @@ router.post("/register/complete", async (req, res) => {
         try {
           const jwk = JSON.parse(trimmed);
           if (!jwk.kty) {
-            return res.status(400).json({ message: "Invalid public key: missing 'kty' in JWK." });
+            return res
+              .status(400)
+              .json({ message: "Invalid public key: missing 'kty' in JWK." });
           }
           normalizedPublicKey = JSON.stringify(jwk);
         } catch (e) {
-          return res.status(400).json({ message: "Invalid public key: malformed JWK JSON." });
+          return res
+            .status(400)
+            .json({ message: "Invalid public key: malformed JWK JSON." });
         }
       } else {
         // Treat as PEM or raw key material string; basic sanity check
-        if (!/BEGIN PUBLIC KEY|BEGIN RSA PUBLIC KEY|BEGIN EC PUBLIC KEY/.test(trimmed)) {
+        if (
+          !/BEGIN PUBLIC KEY|BEGIN RSA PUBLIC KEY|BEGIN EC PUBLIC KEY/.test(
+            trimmed
+          )
+        ) {
           // Allow but warn; client-side crypto may fail if this isn't a real PEM
-          console.warn("Registration received non-PEM publicKey string; storing as-is.");
+          console.warn(
+            "Registration received non-PEM publicKey string; storing as-is."
+          );
         }
         normalizedPublicKey = trimmed;
       }
@@ -178,6 +192,8 @@ router.post("/register/complete", async (req, res) => {
       _id: user._id,
       username: user.username,
       email: user.email,
+      displayName: user.displayName || user.username,
+      avatarUrl: user.avatarUrl || null,
     });
   } catch (error) {
     console.error("Error in /register/complete:", error);
@@ -219,6 +235,8 @@ router.post("/login", async (req, res) => {
       _id: user._id,
       username: user.username,
       email: user.email,
+      displayName: user.displayName || user.username,
+      avatarUrl: user.avatarUrl || null,
     });
   } catch (error) {
     console.error("Error in /login:", error);

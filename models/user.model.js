@@ -13,10 +13,14 @@ const userSchema = new mongoose.Schema(
       // Not required at initial registration; set during completion step
       required: false,
     },
+    // Optional display name for nicer presentation
+    displayName: { type: String, trim: true },
     // Password will be set during completion step
     password: { type: String, required: false },
     // Store user's public key as a string (e.g., JWK or PEM)
     publicKey: { type: String },
+    // Optional avatar URL; client may upload elsewhere and store the public URL here
+    avatarUrl: { type: String, trim: true },
     status: { type: String, enum: ["online", "offline"], default: "offline" },
     lastSeen: { type: Date },
     friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],

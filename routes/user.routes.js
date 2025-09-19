@@ -119,7 +119,7 @@ router.get("/friends", async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate(
       "friends",
-      "username _id status publicKey"
+      "username displayName avatarUrl _id status publicKey"
     );
     res.status(200).json(user.friends);
   } catch (error) {
@@ -142,7 +142,9 @@ router.post("/public-key", async (req, res) => {
     let normalized = null;
     if (typeof publicKey === "object") {
       if (!publicKey.kty) {
-        return res.status(400).json({ message: "Invalid public key: missing 'kty' in JWK." });
+        return res
+          .status(400)
+          .json({ message: "Invalid public key: missing 'kty' in JWK." });
       }
       normalized = JSON.stringify(publicKey);
     } else if (typeof publicKey === "string") {
@@ -151,11 +153,15 @@ router.post("/public-key", async (req, res) => {
         try {
           const jwk = JSON.parse(trimmed);
           if (!jwk.kty) {
-            return res.status(400).json({ message: "Invalid public key: missing 'kty' in JWK." });
+            return res
+              .status(400)
+              .json({ message: "Invalid public key: missing 'kty' in JWK." });
           }
           normalized = JSON.stringify(jwk);
         } catch (e) {
-          return res.status(400).json({ message: "Invalid public key: malformed JWK JSON." });
+          return res
+            .status(400)
+            .json({ message: "Invalid public key: malformed JWK JSON." });
         }
       } else {
         // PEM or other format
@@ -178,5 +184,27 @@ router.post("/public-key", async (req, res) => {
   } catch (error) {
     console.error("Error updating public key:", error);
     res.status(500).json({ message: "Server error updating public key." });
+  }
+});
+
+/**
+ * Update profile fields: displayName, avatarUrl
+ */
+router.patch("/profile", async (req, res) => {
+  try {
+    const { displayName, avatarUrl } = req.body;
+    const update = {};
+    if (typeof displayName === "string") update.displayName = displayName;
+    if (typeof avatarUrl === "string") update.avatarUrl = avatarUrl;
+
+    const user = await User.findByIdAndUpdate(req.user.id, update, {
+      new: true,
+    }).select("_id username email displayName avatarUrl");
+
+    if (!user) return res.status(404).json({ message: "User not found." });
+    res.status(200).json(user);
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    res.status(500).json({ message: "Server error updating profile." });
   }
 });
