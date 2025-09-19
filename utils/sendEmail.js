@@ -43,7 +43,8 @@ const sendEmail = async (options) => {
     // Use SendGrid Dynamic Template
     msg.templateId = options.templateId;
     // Ensure subject is available inside template variables as {{subject}}
-    const subjectFallback = options.subject || "Your BuzzTalk verification code";
+    const subjectFallback =
+      options.subject || "Your BuzzTalk verification code";
     msg.dynamicTemplateData = {
       subject: subjectFallback,
       ...(options.dynamicTemplateData || {}),
