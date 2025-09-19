@@ -32,7 +32,7 @@ if (missing.length) {
 }
 
 // CORS Configuration for local and production
-const allowedOrigins = [
+const staticAllowedOrigins = [
   process.env.CLIENT_URL,
   process.env.CLIENT_URL_2,
   process.env.CLIENT_URL_3,
@@ -44,10 +44,19 @@ const allowedOrigins = [
   "http://localhost:5000",
 ].filter(Boolean);
 
+const isDevLocalhost = (origin) =>
+  typeof origin === "string" &&
+  (origin.startsWith("http://localhost") ||
+    origin.startsWith("http://127.0.0.1"));
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow REST tools or same-origin requests with no Origin header
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (
+      !origin ||
+      staticAllowedOrigins.includes(origin) ||
+      isDevLocalhost(origin)
+    ) {
       return callback(null, true);
     }
     return callback(new Error(`CORS blocked for origin: ${origin}`));
@@ -64,7 +73,16 @@ const corsOptions = {
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        staticAllowedOrigins.includes(origin) ||
+        isDevLocalhost(origin)
+      ) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Socket CORS blocked for origin: ${origin}`));
+    },
     methods: corsOptions.methods,
     allowedHeaders: corsOptions.allowedHeaders,
     credentials: corsOptions.credentials,
@@ -175,24 +193,58 @@ io.on("connection", async (socket) => {
 
   // --- CORE REAL-TIME LOGIC ---
 
+  // Allow client to explicitly join a chat room after opening it
+  socket.on("joinChat", async ({ chatId }) => {
+    try {
+      const chat = await Chat.findById(chatId);
+      if (!chat) return;
+      // Only allow if the user is a participant
+      const isParticipant = chat.participants.some(
+        (p) => p.toString() === socket.userId
+      );
+      if (isParticipant) {
+        socket.join(chatId.toString());
+      }
+    } catch (e) {
+      console.error("joinChat error:", e.message);
+    }
+  });
+
   // Handle sending a new message
   socket.on("sendMessage", async ({ chatId, content }) => {
     try {
-      const message = new Message({
-        chatId,
-        senderId: socket.userId,
-        content, // This is the encrypted content from the client
-      });
+      const chat = await Chat.findById(chatId);
+      if (!chat) return;
+      // Only participants can send
+      if (!chat.participants.some((p) => p.toString() === socket.userId)) {
+        return;
+      }
+
+      const message = new Message({ chatId, senderId: socket.userId, content });
       const savedMessage = await message.save();
       await Chat.findByIdAndUpdate(chatId, { lastMessage: savedMessage._id });
 
       // Populate sender info before emitting
       const populatedMessage = await Message.findById(
         savedMessage._id
-      ).populate("senderId", "username _id");
+      ).populate("senderId", "username _id displayName avatarUrl");
+
+      // Ensure sender is in the chat room before broadcasting
+      socket.join(chatId.toString());
 
       // Emit to all clients in the chat room
-      io.to(chatId).emit("newMessage", populatedMessage);
+      io.to(chatId.toString()).emit("newMessage", populatedMessage);
+
+      // Additionally emit directly to other online participants who are NOT in the room
+      const room = io.sockets.adapter.rooms.get(chatId.toString());
+      for (const participant of chat.participants) {
+        const uid = participant.toString();
+        if (uid === socket.userId) continue; // skip sender
+        const sid = onlineUsers.get(uid);
+        if (sid && (!room || !room.has(sid))) {
+          io.to(sid).emit("newMessage", populatedMessage);
+        }
+      }
     } catch (error) {
       console.error("Error saving message:", error);
     }
