@@ -36,15 +36,20 @@ const sendEmail = async (options) => {
       name: "BuzzTalk",
       email: process.env.SENDER_EMAIL, // verified sender email
     },
-    subject: "",
+    subject: "Your BuzzTalk verification code",
   };
 
   if (options.templateId) {
     // Use SendGrid Dynamic Template
     msg.templateId = options.templateId;
-    msg.dynamicTemplateData = options.dynamicTemplateData || {};
-    // Provide a fallback subject so some mail clients show a subject line
-    msg.subject = options.subject || "Your BuzzTalk verification code";
+    // Ensure subject is available inside template variables as {{subject}}
+    const subjectFallback = options.subject || "Your BuzzTalk verification code";
+    msg.dynamicTemplateData = {
+      subject: subjectFallback,
+      ...(options.dynamicTemplateData || {}),
+    };
+    // Also set top-level subject; some providers may display this even with templates
+    msg.subject = subjectFallback;
   } else {
     // Use plain email
     msg.subject = options.subject || "Your BuzzTalk verification code";
