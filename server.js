@@ -67,8 +67,13 @@ const io = new Server(server, {
 
 // Middleware
 app.use(cors(corsOptions));
-// Ensure all preflight requests succeed quickly
-app.options("*", cors(corsOptions));
+// Ensure all preflight requests succeed quickly (Express 5: avoid "*" route)
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    return cors(corsOptions)(req, res, next);
+  }
+  next();
+});
 app.use(express.json());
 
 // API Routes
