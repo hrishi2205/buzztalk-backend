@@ -277,6 +277,19 @@ io.on("connection", async (socket) => {
       if (!chat.participants.some((p) => p.toString() === socket.userId)) {
         return;
       }
+      // Enforce block: neither side should have blocked the other
+      const participants = chat.participants.map((p) => p.toString());
+      const otherId = participants.find((p) => p !== socket.userId);
+      const [meUser, otherUser] = await Promise.all([
+        User.findById(socket.userId).select("blocked"),
+        User.findById(otherId).select("blocked"),
+      ]);
+      if (
+        (meUser?.blocked || []).some((b) => b.toString() === otherId) ||
+        (otherUser?.blocked || []).some((b) => b.toString() === socket.userId)
+      ) {
+        return; // silently drop
+      }
 
       const message = new Message({ chatId, senderId: socket.userId, content });
       const savedMessage = await message.save();

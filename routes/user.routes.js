@@ -191,6 +191,55 @@ router.get("/friends", async (req, res) => {
   }
 });
 
+// Unfriend a user (removes from both users' friends arrays)
+router.post("/unfriend", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const me = req.user.id;
+    if (!userId) return res.status(400).json({ message: "userId required" });
+    // Remove each other as friends
+    await Promise.all([
+      User.updateOne({ _id: me }, { $pull: { friends: userId } }),
+      User.updateOne({ _id: userId }, { $pull: { friends: me } }),
+    ]);
+    return res.status(200).json({ message: "Unfriended successfully." });
+  } catch (e) {
+    console.error("Unfriend error:", e);
+    return res.status(500).json({ message: "Server error unfriending." });
+  }
+});
+
+// Block a user: add to blocked list and ensure not friends
+router.post("/block", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const me = req.user.id;
+    if (!userId) return res.status(400).json({ message: "userId required" });
+    await Promise.all([
+      User.updateOne({ _id: me }, { $addToSet: { blocked: userId }, $pull: { friends: userId } }),
+      User.updateOne({ _id: userId }, { $pull: { friends: me } }),
+    ]);
+    return res.status(200).json({ message: "User blocked." });
+  } catch (e) {
+    console.error("Block error:", e);
+    return res.status(500).json({ message: "Server error blocking user." });
+  }
+});
+
+// Unblock a user
+router.post("/unblock", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const me = req.user.id;
+    if (!userId) return res.status(400).json({ message: "userId required" });
+    await User.updateOne({ _id: me }, { $pull: { blocked: userId } });
+    return res.status(200).json({ message: "User unblocked." });
+  } catch (e) {
+    console.error("Unblock error:", e);
+    return res.status(500).json({ message: "Server error unblocking user." });
+  }
+});
+
 module.exports = router;
 /**
  * Rotate/Update the authenticated user's public key.
