@@ -1,6 +1,9 @@
 const router = require("express").Router();
 const User = require("../models/user.model");
+const Chat = require("../models/chat.model");
+const Message = require("../models/message.model");
 const { auth } = require("../middleware/auth.middleware");
+const bcrypt = require("bcryptjs");
 
 // Public avatar endpoint by user ID; streams the stored MongoDB avatar
 // Placed BEFORE auth middleware so browser <img> tags can load without JWT headers
@@ -68,7 +71,7 @@ router.get("/search/:username", async (req, res) => {
     const { username } = req.params;
     const user = await User.findOne({
       username: username.toLowerCase(),
-    }).select("username _id");
+    }).select("username _id avatarUrl displayName");
 
     if (!user || user._id.equals(req.user.id)) {
       return res.status(404).json({ message: "User not found." });
@@ -216,7 +219,10 @@ router.post("/block", async (req, res) => {
     const me = req.user.id;
     if (!userId) return res.status(400).json({ message: "userId required" });
     await Promise.all([
-      User.updateOne({ _id: me }, { $addToSet: { blocked: userId }, $pull: { friends: userId } }),
+      User.updateOne(
+        { _id: me },
+        { $addToSet: { blocked: userId }, $pull: { friends: userId } }
+      ),
       User.updateOne({ _id: userId }, { $pull: { friends: me } }),
     ]);
     return res.status(200).json({ message: "User blocked." });
@@ -365,5 +371,39 @@ router.post("/private-key", async (req, res) => {
     res
       .status(500)
       .json({ message: "Server error updating encrypted private key." });
+  }
+});
+
+// Delete account permanently (verify password first)
+router.post("/delete-account", async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    if (!password) return res.status(400).json({ message: "Password required." });
+    const me = await User.findById(req.user.id).select("password");
+    if (!me) return res.status(404).json({ message: "User not found." });
+    const ok = await bcrypt.compare(password, me.password || "");
+    if (!ok) return res.status(401).json({ message: "Invalid password." });
+
+    // Remove from others' friends and friendRequests, blocked
+    await Promise.all([
+      User.updateMany({ friends: req.user.id }, { $pull: { friends: req.user.id } }),
+      User.updateMany({ "friendRequests.from": req.user.id }, { $pull: { friendRequests: { from: req.user.id } } }),
+      User.updateMany({ blocked: req.user.id }, { $pull: { blocked: req.user.id } }),
+    ]);
+    // Delete chats where user is a participant and related messages
+    const chats = await Chat.find({ participants: req.user.id }).select("_id");
+    const chatIds = chats.map((c) => c._id);
+    if (chatIds.length) {
+      await Promise.all([
+        Message.deleteMany({ chatId: { $in: chatIds } }),
+        Chat.deleteMany({ _id: { $in: chatIds } }),
+      ]);
+    }
+    // Finally delete the user
+    await User.deleteOne({ _id: req.user.id });
+    return res.status(200).json({ message: "Account deleted." });
+  } catch (e) {
+    console.error("Delete account error:", e);
+    return res.status(500).json({ message: "Server error deleting account." });
   }
 });
