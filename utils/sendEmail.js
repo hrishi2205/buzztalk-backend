@@ -36,6 +36,7 @@ const sendEmail = async (options) => {
       name: "BuzzTalk",
       email: process.env.SENDER_EMAIL, // verified sender email
     },
+    subject: "",
   };
 
   if (options.templateId) {
