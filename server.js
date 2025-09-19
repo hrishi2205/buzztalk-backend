@@ -129,6 +129,12 @@ const upload = multer({
   },
 });
 
+// Multer for generic chat file uploads (up to 10 MB, broader types)
+const uploadAny = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
@@ -152,6 +158,31 @@ app.post(
     } catch (e) {
       console.error("Avatar upload error:", e);
       res.status(500).json({ message: "Server error uploading avatar." });
+    }
+  }
+);
+
+// Chat file upload endpoint (authenticated) - returns { url, filename, mimetype, size }
+app.post(
+  "/api/upload/file",
+  auth,
+  uploadAny.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file)
+        return res.status(400).json({ message: "No file uploaded." });
+      const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${
+        req.file.filename
+      }`;
+      res.status(200).json({
+        url: fileUrl,
+        filename: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      });
+    } catch (e) {
+      console.error("File upload error:", e);
+      res.status(500).json({ message: "Server error uploading file." });
     }
   }
 );
@@ -270,6 +301,40 @@ io.on("connection", async (socket) => {
     socket
       .to(chatId)
       .emit("userStoppedTyping", { chatId, userId: socket.userId });
+  });
+
+  // Handle message reactions (toggle per-user per-emoji)
+  socket.on("reactMessage", async ({ messageId, emoji }) => {
+    try {
+      if (!messageId || !emoji) return;
+      const message = await Message.findById(messageId);
+      if (!message) return;
+      const chat = await Chat.findById(message.chatId);
+      if (!chat) return;
+      const isParticipant = chat.participants.some(
+        (p) => p.toString() === socket.userId
+      );
+      if (!isParticipant) return;
+
+      const idx = (message.reactions || []).findIndex(
+        (r) => r.userId?.toString() === socket.userId && r.emoji === emoji
+      );
+      if (idx >= 0) {
+        message.reactions.splice(idx, 1);
+      } else {
+        message.reactions.push({
+          userId: socket.userId,
+          emoji,
+          at: new Date(),
+        });
+      }
+      await message.save();
+
+      const payload = { messageId, reactions: message.reactions };
+      io.to(chat._id.toString()).emit("messageReaction", payload);
+    } catch (e) {
+      console.error("reactMessage error:", e.message);
+    }
   });
 
   // Handle friend request notifications
