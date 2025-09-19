@@ -108,7 +108,7 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use("/uploads", express.static(uploadsDir));
 
-// Multer storage for avatar uploads
+// Multer storage for avatar uploads (store in MongoDB, so use memory storage)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => {
@@ -129,6 +129,17 @@ const upload = multer({
   },
 });
 
+// Memory storage for avatars to store directly in MongoDB
+const uploadMem = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (allowed.includes(file.mimetype)) return cb(null, true);
+    return cb(new Error("Only image files are allowed."));
+  },
+});
+
 // Multer for generic chat file uploads (up to 10 MB, broader types)
 const uploadAny = multer({
   storage,
@@ -141,26 +152,23 @@ app.use("/api/users", userRoutes);
 app.use("/api/chats", chatRoutes);
 
 // Avatar upload endpoint (authenticated)
-app.post(
-  "/api/upload/avatar",
-  auth,
-  upload.single("avatar"),
-  async (req, res) => {
-    try {
-      if (!req.file)
-        return res.status(400).json({ message: "No file uploaded." });
-      const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${
-        req.file.filename
-      }`;
-      // Optionally, update user's avatarUrl immediately
-      await User.findByIdAndUpdate(req.user.id, { avatarUrl: fileUrl });
-      res.status(200).json({ url: fileUrl });
-    } catch (e) {
-      console.error("Avatar upload error:", e);
-      res.status(500).json({ message: "Server error uploading avatar." });
-    }
+app.post("/api/upload/avatar", auth, uploadMem.single("avatar"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded." });
+    const update = {
+      avatar: req.file.buffer,
+      avatarContentType: req.file.mimetype,
+      avatarUpdatedAt: new Date(),
+    };
+    const url = `${req.protocol}://${req.get("host")}/api/users/${req.user.id}/avatar?ts=${Date.now()}`;
+    update.avatarUrl = url; // keep avatarUrl to ease client consumption
+    await User.findByIdAndUpdate(req.user.id, update);
+    res.status(200).json({ url });
+  } catch (e) {
+    console.error("Avatar upload error:", e);
+    res.status(500).json({ message: "Server error uploading avatar." });
   }
-);
+});
 
 // Chat file upload endpoint (authenticated) - returns { url, filename, mimetype, size }
 app.post(
